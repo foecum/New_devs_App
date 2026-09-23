@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from ...core.auth import authenticate_request, auth_cache
-from ...core.tenant_resolver import TenantResolver
-from ...models.auth import AuthenticatedUser
-from ...database import supabase
-import logging
-import hashlib
-
-from typing import List, Dict, Any
-
 import asyncio
+import hashlib
+import logging
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+
+from ...core.auth import auth_cache, authenticate_request
+from ...core.tenant_resolver import TenantResolver
+from ...database import supabase
+from ...models.auth import AuthenticatedUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -90,8 +90,8 @@ async def get_current_user_info(
             {"section": p.section, "action": p.action} for p in (user.permissions or [])
         ]
         
-        # This ensures /auth/me returns correct tenant like other endpoints
-        tenant_id = await TenantResolver.resolve_tenant_id(user_id=user.id, user_email=user.email)
+        # Reuse the tenant already resolved by authentication.
+        tenant_id = user.tenant_id
         logger.info(f"AUTH /me: Fresh tenant lookup for {user.email}: {tenant_id}")
         
         # Add smart view permissions if user has access

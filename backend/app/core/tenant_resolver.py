@@ -1,8 +1,8 @@
 """
 Minimal tenant resolver for authentication.
 """
-from typing import Optional
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,13 @@ class TenantResolver:
         return None
 
     @staticmethod
-    async def resolve_tenant_id(user_id: str, user_email: str, token: Optional[str] = None) -> str:
+    async def resolve_tenant_id(
+        user_id: str,
+        user_email: str,
+        token: Optional[str] = None,
+        claimed_tenant_id: Optional[str] = None,
+        tenant_ids: Optional[list[str]] = None,
+    ) -> Optional[str]:
         """
         Resolve tenant ID for a user.
         
@@ -78,18 +84,16 @@ class TenantResolver:
             user_email: User email
             
         Returns:
-            Tenant ID
+            An active tenant ID, or None when the tenant cannot be resolved safely.
         """
-        # Fallback mapping by known user email.
-        if user_email == "sunset@propertyflow.com":
-            return "tenant-a"
-        if user_email == "ocean@propertyflow.com":
-            return "tenant-b"
-        if user_email == "candidate@propertyflow.com":
-            return "tenant-a"
-            
-        # Default fallback
-        return "tenant-a"
+        active_tenants = {tenant_id for tenant_id in (tenant_ids or []) if tenant_id}
+        if claimed_tenant_id:
+            if not active_tenants:
+                return claimed_tenant_id
+            return claimed_tenant_id if claimed_tenant_id in active_tenants else None
+        if len(active_tenants) == 1:
+            return next(iter(active_tenants))
+        return None
 
     @staticmethod
     async def update_user_tenant_metadata(user_id: str, tenant_id: str) -> None:

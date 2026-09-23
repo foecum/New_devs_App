@@ -1,14 +1,16 @@
-from fastapi import HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from typing import Optional, List
-from datetime import datetime
-import logging
-import hashlib
 import asyncio
+import hashlib
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+
+from ..config import settings
 from ..database import supabase
 from ..models.auth import AuthenticatedUser, Permission
-from ..config import settings
 from .tenant_resolver import TenantResolver
 
 logger = logging.getLogger(__name__)
@@ -248,12 +250,25 @@ async def authenticate_request(
         logger.info(f"AUTH: User cities from users_city table: {user_cities}")
         logger.info(f"AUTH: Admin status: {is_admin} - city access will be determined by endpoint logic")
 
-        # Use the comprehensive tenant resolver
+        claimed_tenant_id = None
+        for metadata_name in ("raw_app_metadata", "app_metadata", "user_metadata"):
+            metadata = getattr(user, metadata_name, None) or {}
+            if metadata.get("tenant_id"):
+                claimed_tenant_id = metadata["tenant_id"]
+                break
+
+        # Resolve only from verified claims and active tenant membership.
         logger.info(f"==================== TENANT ID EXTRACTION ====================")
         logger.info(f"User: {user.email} (ID: {user.id})")
 
         # Use TenantResolver for comprehensive tenant resolution
-        tenant_id = await TenantResolver.resolve_tenant_id(token=token, user_id=user.id, user_email=user.email)
+        tenant_id = await TenantResolver.resolve_tenant_id(
+            token=token,
+            user_id=user.id,
+            user_email=user.email,
+            claimed_tenant_id=claimed_tenant_id,
+            tenant_ids=tenant_ids,
+        )
 
         # If we found a tenant_id and it's not in the user's metadata, update it for next time
         current_tenant_in_metadata = None
@@ -267,6 +282,12 @@ async def authenticate_request(
             asyncio.create_task(TenantResolver.update_user_tenant_metadata(user.id, tenant_id))
 
         logger.info(f"==================== TENANT ID EXTRACTION END ====================")
+
+        if not tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not associated with an active tenant",
+            )
 
         auth_user = AuthenticatedUser(
             id=user.id,

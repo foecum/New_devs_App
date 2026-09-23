@@ -9,9 +9,8 @@
  * @security This prevents cross-tenant data leakage by enforcing backend-only database access
  */
 
-import { supabase } from './supabase';
 import { sessionManager } from '../utils/sessionManager';
-import { withRetry, handleApiError, classifyError } from '../utils/apiErrorHandler';
+import { supabase } from './supabase';
 
 // Get backend URL with fallback for misconfigured production environments
 const getBackendUrl = () => {
@@ -1452,20 +1451,14 @@ export class SecureAPIClient {
   /**
    * Get dashboard summary with optional simulation header
    */
-  async getDashboardSummary(propertyId: string, options?: { simulatedTenant?: string, timestamp?: number }) {
-    const queryParams = new URLSearchParams({ property_id: propertyId });
-    if (options?.timestamp) {
-      queryParams.append('_t', options.timestamp.toString());
-    }
+  async getDashboardSummary(propertyId: string, month: number, year: number) {
+    const queryParams = new URLSearchParams({
+      property_id: propertyId,
+      month: month.toString(),
+      year: year.toString()
+    });
 
-    const requestOptions: RequestInit = {};
-    if (options?.simulatedTenant) {
-      requestOptions.headers = {
-        'X-Simulated-Tenant': options.simulatedTenant
-      };
-    }
-
-    return this.request<any>(`/api/v1/dashboard/summary?${queryParams}`, requestOptions);
+    return this.request<any>(`/api/v1/dashboard/summary?${queryParams}`);
   }
 
   async uploadCompanyLogo(logo_url: string) {
